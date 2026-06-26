@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portail de température des Lagunes méditerranéennes</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"/>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: sans-serif; background: #f4f5f7; height: 100vh; display: flex; flex-direction: column; }
+
+        .header {
+            background: white;
+            border-bottom: 1px solid #e0e0e0;
+            padding: 0.9rem 2rem;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-shrink: 0;
+        }
+        .header-title { font-size: 17px; font-weight: 500; }
+        .header-sub { font-size: 12px; color: #888; margin-top: 2px; }
+
+        .layout { display: flex; flex: 1; overflow: hidden; }
+
+        .left-panel {
+            width: 380px;
+            min-width: 380px;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #e0e0e0;
+            background: white;
+            overflow: hidden;
+        }
+
+        #map-wrapper {
+            width: 100%;
+            aspect-ratio: 2 / 1;
+            flex-shrink: 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        #map { width: 100%; height: 100%; }
+
+        .list-header {
+            padding: 8px 14px;
+            font-size: 11px;
+            color: #aaa;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            border-bottom: 1px solid #f0f0f0;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .list-header span { font-size: 11px; color: #bbb; }
+
+        .lagune-list { overflow-y: auto; flex: 1; padding: 4px 8px 8px; }
+        .lagune-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            padding: 7px 10px;
+            border: none;
+            background: transparent;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            color: #555;
+            text-align: left;
+        }
+        .lagune-btn:hover { background: #f0f0f0; color: #111; }
+        .lagune-btn.active { background: #e8f0fe; color: #1a56db; font-weight: 500; }
+        .dot { width: 7px; height: 7px; border-radius: 50%; background: #ccc; flex-shrink: 0; }
+        .lagune-btn.active .dot { background: #1a56db; }
+
+        .content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .content-header {
+            padding: 0.8rem 1.5rem;
+            background: white;
+            border-bottom: 1px solid #e0e0e0;
+            flex-shrink: 0;
+        }
+        .content-title { font-size: 15px; font-weight: 500; }
+
+        .iframe-wrapper { flex: 1; overflow: hidden; }
+        .iframe-wrapper iframe { width: 100%; height: 100%; border: none; }
+
+        .placeholder {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            color: #bbb;
+        }
+        .placeholder svg { width: 48px; height: 48px; stroke: #ccc; fill: none; stroke-width: 1.5; }
+        .placeholder p { font-size: 14px; }
+
+        .leaflet-popup-content-wrapper { border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.15); padding: 0; }
+        .leaflet-popup-content { margin: 0; }
+        .popup-inner { padding: 10px 14px; font-family: sans-serif; }
+        .popup-name { font-size: 14px; font-weight: 500; margin-bottom: 6px; color: #111; }
+        .popup-btn {
+            display: inline-block;
+            background: #1a56db;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 5px 12px;
+            font-size: 12px;
+            cursor: pointer;
+            width: 100%;
+            text-align: center;
+        }
+        .popup-btn:hover { background: #1440a8; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <svg viewBox="0 0 24 24" style="width:22px;height:22px;stroke:#1a56db;fill:none;stroke-width:2;flex-shrink:0;">
+        <path d="M2 12 Q6 6 12 12 Q18 18 22 12"/>
+        <path d="M2 7 Q6 1 12 7 Q18 13 22 7" opacity="0.4"/>
+    </svg>
+    <div>
+        <div class="header-title">Portail de température des Lagunes méditerranéennes</div>
+        <div class="header-sub">Cliquez sur la carte ou la liste pour afficher un rapport</div>
+    </div>
+</div>
+
+<div class="layout">
+
+    <div class="left-panel">
+        <div id="map-wrapper">
+            <div id="map"></div>
+        </div>
+        <div class="list-header">
+            <span>Lagunes</span>
+            <span id="list-count"></span>
+        </div>
+        <div class="lagune-list" id="lagune-list"></div>
+    </div>
+
+    <main class="content">
+        <div class="content-header">
+            <div class="content-title" id="content-title">Sélectionnez une lagune</div>
+        </div>
+
+        <div id="intro-text" style="
+            display: none;
+            padding: 12px 16px;
+            background: #f0f4ff;
+            border-left: 3px solid #2c5f8a;
+            border-radius: 0 6px 6px 0;
+            margin: 1rem 1.5rem 0.5rem;
+            font-size: 13px;
+            color: #444;
+            line-height: 1.6;
+            flex-shrink: 0;
+        ">
+            Ce portail présente l'analyse des températures de l'eau des lagunes méditerranéennes,
+            issues d'un modèle hybride (modèle physique avec correction des erreurs par XGBoost). Les vagues de chaleur marines (MHW)
+            sont détectées selon la méthode de Hobday et al. (2016), en comparant la température journalière
+            au 90ème percentile de la climatologie de référence.
+        </div>
+
+        <div style="flex:1; display:flex; flex-direction:column; overflow:hidden;">
+            <div class="placeholder" id="placeholder">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+                <p>Cliquez sur un marqueur ou la liste pour afficher le rapport</p>
+            </div>
+            <div class="iframe-wrapper" id="iframe-wrapper" style="display:none;">
+                <iframe id="report-frame" title="Rapport lagune"></iframe>
+            </div>
+        </div>
+    </main>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const LAGUNES = [
+
+
+    { name: "Canet",           lat: 42.6569, lon: 3.0239 },
+    { name: "Salses Leucate",  lat: 42.8833, lon: 3.0165 },
+    { name: "La Palme",        lat: 42.9668, lon: 3.0067 },
+    { name: "Bages-Sigean",    lat: 43.1259, lon: 3.0009 },
+    { name: "Ayrolle",         lat: 43.0716, lon: 3.0624 },
+    { name: "Ayrolle ZN",      lat: 43.0827, lon: 3.0582 },
+    { name: "Grand Bagnas",    lat: 43.3192, lon: 3.5160 },
+    { name: "Thau CN",         lat: 43.4054, lon: 3.6550 },
+    { name: "Thau Fond",       lat: 43.4199, lon: 3.6269 },
+    { name: "Thau Surface",    lat: 43.4169, lon: 3.6239 }, 
+    { name: "Thau RC",         lat: 43.3936, lon: 3.6379 },
+    { name: "Thau ZM",         lat: 43.3523, lon: 3.5387 },
+    { name: "Thau ZN",         lat: 43.3599, lon: 3.5734 },   
+    { name: "Pierre Blanche",  lat: 43.4919, lon: 3.8516 },
+    { name: "Vic",             lat: 43.4915, lon: 3.8259 },
+    { name: "Prevost",         lat: 43.5291, lon: 3.9169 },
+    { name: "Mejean",          lat: 43.5443, lon: 3.9229 },
+    { name: "Or",              lat: 43.5811, lon: 4.0415 },
+    { name: "Ponant",          lat: 43.5641, lon: 4.1194 },
+    { name: "Vaccares",        lat: 43.5357, lon: 4.6027 },
+    { name: "Berre Fond",      lat: 43.4439, lon: 5.0998 },
+    { name: "Berre Surface",   lat: 43.4409, lon: 5.0968 },
+    { name: "Biguglia",        lat: 42.6352, lon: 9.4545 },
+    { name: "Diana",           lat: 42.1348, lon: 9.5408 },
+    { name: "Urbinu",          lat: 42.0426, lon: 9.4619 },
+    { name: "Urbinu CN",       lat: 42.0436, lon: 9.4902 },
+    { name: "Urbinu Fond",     lat: 42.0484, lon: 9.4771 },
+    { name: "Urbinu Surface",  lat: 42.0454, lon: 9.4741 },   
+    { name: "Palu",            lat: 41.9463, lon: 9.4098 },
+];
+
+document.getElementById('list-count').textContent = LAGUNES.length + ' sites';
+
+const map = L.map('map').setView([43.0, 4.5], 6);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap', maxZoom: 18
+}).addTo(map);
+
+const markerIcon = L.divIcon({
+    className: '',
+    html: `<div style="width:11px;height:11px;background:#1a56db;border:2px solid white;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,0.3);"></div>`,
+    iconSize: [11, 11], iconAnchor: [5, 5], popupAnchor: [0, -10]
+});
+const markerIconActive = L.divIcon({
+    className: '',
+    html: `<div style="width:13px;height:13px;background:#e53e3e;border:2px solid white;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,0.4);"></div>`,
+    iconSize: [13, 13], iconAnchor: [6, 6], popupAnchor: [0, -10]
+});
+
+const title         = document.getElementById('content-title');
+const placeholder   = document.getElementById('placeholder');
+const iframeWrapper = document.getElementById('iframe-wrapper');
+const frame         = document.getElementById('report-frame');
+const listEl        = document.getElementById('lagune-list');
+
+let activeMarker = null;
+let activeBtn    = null;
+
+function loadReport(name, marker) {
+    title.textContent = name;
+    placeholder.style.display = 'none';
+    document.getElementById('intro-text').style.display = 'block';
+    iframeWrapper.style.display = 'flex';
+    frame.src = 'Outputs/Rapports_html/Rapport_' + name + '.html';
+    map.closePopup();
+
+    if (activeMarker) activeMarker.setIcon(markerIcon);
+    if (marker) { marker.setIcon(markerIconActive); activeMarker = marker; }
+
+    if (activeBtn) activeBtn.classList.remove('active');
+    const btn = document.querySelector(`.lagune-btn[data-name="${name}"]`);
+    if (btn) { btn.classList.add('active'); activeBtn = btn; btn.scrollIntoView({ block: 'nearest' }); }
+}
+
+LAGUNES.forEach(l => {
+    const marker = L.marker([l.lat, l.lon], { icon: markerIcon }).addTo(map);
+    marker.bindPopup(`
+        <div class="popup-inner">
+            <div class="popup-name">${l.name}</div>
+            <button class="popup-btn" onclick="loadReport('${l.name}', null)">Voir le rapport</button>
+        </div>
+    `);
+    marker.on('click', () => {
+        if (activeMarker) activeMarker.setIcon(markerIcon);
+        marker.setIcon(markerIconActive);
+        activeMarker = marker;
+    });
+
+    const btn = document.createElement('button');
+    btn.className = 'lagune-btn';
+    btn.dataset.name = l.name;
+    btn.innerHTML = `<span class="dot"></span>${l.name}`;
+    btn.addEventListener('click', () => {
+        map.setView([l.lat, l.lon], 9);
+        marker.openPopup();
+        loadReport(l.name, marker);
+    });
+    listEl.appendChild(btn);
+});
+</script>
+</body>
+</html>
